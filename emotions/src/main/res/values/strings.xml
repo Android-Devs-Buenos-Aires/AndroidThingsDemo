@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">emotions</string>
+    <string name="sad_state_description">Triste</string>
+    <string name="undefined_state_description">Ni idea</string>
+    <string name="very_sad_state_description">Muy Triste</string>
+    <string name="possible_joy_state_description">Mas o Menos Feliz</string>
+    <string name="joy_state_description">Feliz</string>
+    <string name="very_joy_state_description">Re Feliz</string>
+</resources>

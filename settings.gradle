@@ -1,0 +1,1 @@
+include ':app', ':companionApp', ':companionApp', ':emotions', ':hcsr04'
