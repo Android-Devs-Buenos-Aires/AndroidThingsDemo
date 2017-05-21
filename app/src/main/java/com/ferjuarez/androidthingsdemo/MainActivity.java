@@ -15,7 +15,6 @@ import android.os.HandlerThread;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Base64;
 import android.util.Log;
-
 import com.ferjuarez.emotions.Emotion;
 import com.ferjuarez.emotions.JoyEmotion;
 import com.google.android.things.contrib.driver.button.Button;
@@ -25,24 +24,21 @@ import com.google.firebase.database.DatabaseError;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ServerValue;
-
 import net.trippedout.cloudvisionlib.CloudVisionApi;
 import net.trippedout.cloudvisionlib.CloudVisionService;
 import net.trippedout.cloudvisionlib.FacesFeature;
 import net.trippedout.cloudvisionlib.ImageUtil;
 import net.trippedout.cloudvisionlib.VisionCallback;
-
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
-
 import vaf.vishal.hcsr04.Hcsr04UltrasonicDriver;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener{
+    private static final String TAG = "AndroidThingsDemo";
 
     private static final int MAX_FACE_RESULTS = 3;
-
 
     private final String BUTTON_GPIO_PIN = "BCM21";
     private final String PIN_LED = "BCM6";
@@ -50,37 +46,40 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private final String PIN_ECHO = "BCM25";
 
     private Gpio mLedGpio;
+    private Button mButton;
     private PeripheralManagerService mPeriphericalService;
     private SensorManager mSensorManager;
     private Hcsr04UltrasonicDriver mSensorDriver;
+
     private CameraHandler mCamera;
     private Handler mCameraHandler;
     private HandlerThread mCameraThread;
-    private FirebaseDatabase mDatabase;
-    private Button mButton;
     private boolean isCameraEnabled = true;
 
-    CloudVisionService mCloudVisionService;
+    private CloudVisionService mCloudVisionService;
+    private FirebaseDatabase mDatabase;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Log.e("RPI APP","RUNNING");
+        Log.e(TAG,"APP RUNNING");
         //setContentView(R.layout.activity_main);
 
         // We need permission to access the camera
         if (checkSelfPermission(android.Manifest.permission.CAMERA)
                 != PackageManager.PERMISSION_GRANTED) {
+            // first running need to restart rspi (check in https://developer.android.com/things/training/doorbell/camera-input.html)
             return;
         }
 
         mDatabase = FirebaseDatabase.getInstance();
         mPeriphericalService = new PeripheralManagerService();
+        mCloudVisionService = CloudVisionApi.getCloudVisionService();
+
         setupButton();
         setupCamera();
         setupIndicatorLed();
         setupProximitySensor();
-        mCloudVisionService = CloudVisionApi.getCloudVisionService();
     }
 
     @Override
@@ -117,7 +116,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
             @Override
             public void onApiError(CloudVisionApi.Error error) {
-                Log.e("","");
+                Log.e(TAG,"Error on communicate with CloudVision");
             }
         });
     }
@@ -145,7 +144,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mLedGpio = mPeriphericalService.openGpio(PIN_LED);
             mLedGpio.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
         } catch (IOException e){
-
         }
     }
 
@@ -165,6 +163,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mSensorDriver = new Hcsr04UltrasonicDriver(PIN_TRIGGER, PIN_ECHO);
             mSensorDriver.register();
         } catch (IOException e) {
+            Log.e(TAG,"Error on initialize proximity sensor");
         }
     }
 
@@ -221,11 +220,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private void updateLastPictureInFirebase(final byte[] imageBytes, final Emotion emotion){
-        Log.e("Firebase","removing data");
         mDatabase.getReference("logs").removeValue(new DatabaseReference.CompletionListener() {
             @Override
             public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
-                Log.e("Firebase","finish remove");
+                Log.e(TAG,"Removed last update from Firebase");
                 uploadImageToFirebase(imageBytes, emotion);
             }
         });
@@ -235,22 +233,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         // upload image to firebase
         final DatabaseReference log = mDatabase.getReference("logs").push();
         String imageStr = Base64.encodeToString(imageBytes, Base64.NO_WRAP | Base64.URL_SAFE);
-        // upload image to firebase
-        log.child("timestamp").setValue(ServerValue.TIMESTAMP);
-        log.child("image").setValue(imageStr);
-        log.child("emotion").setValue(emotion.getState().getLikelihood());
-        setLedState(false);
-        //isCameraEnabled = true;
 
-        /*log.child("image").setValue(imageStr, new DatabaseReference.CompletionListener() {
+        log.child("timestamp").setValue(ServerValue.TIMESTAMP);
+        //log.child("image").setValue(imageStr);
+        log.child("emotion").setValue(emotion.getState().getLikelihood());
+        log.child("image").setValue(imageStr, new DatabaseReference.CompletionListener() {
             @Override
             public void onComplete(DatabaseError databaseError, DatabaseReference databaseReference) {
-
-                String key = databaseReference.getParent().getKey();
-                Log.e("Key Parent: ", key);
+                setLedState(false);
+                reenableCamera();
             }
-        });*/
-        //
+        });
+        //isCameraEnabled = true;
     }
 
 
@@ -278,10 +272,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         public void onButtonEvent(Button button, boolean pressed) {
             if (pressed) {
-
                 //closeProximitySensor();
                 //setupProximitySensor();
-                Log.e("PhotoBooth","Button Pressed!");
+                Log.e(TAG,"Button Pressed!");
             }
         }
     };
@@ -292,7 +285,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
     }
 
-
     private Emotion detectEmotions(CloudVisionApi.FaceDetectResponse response) {
         JoyEmotion joyEmotion = null;
         if(response != null){
@@ -301,13 +293,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             if (faceAnnotations != null) {
                 for (FacesFeature.FaceAnnotations annotation : faceAnnotations) {
                     joyEmotion = new JoyEmotion(annotation.joyLikelihood);
-
-                /*System.console().printf(
-                        "anger: %s\njoy: %s\nsurprise: %s\nposition: %s",
-                        annotation.getAngerLikelihood(),
-                        annotation.getJoyLikelihood(),
-                        annotation.getSurpriseLikelihood(),
-                        annotation.getBoundingPoly());*/
                 }
             } else {
                 joyEmotion = new JoyEmotion(null);
@@ -323,7 +308,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void onSensorChanged(SensorEvent sensorEvent) {
 
         float value = sensorEvent.values[0];
-        Log.e("Sensor Values",String.valueOf(value));
+        Log.e(TAG,"Sensor Values: " + String.valueOf(value));
         if(value > 40 && value < 50 && isCameraEnabled){
             setLedState(true);
             mCamera.takePicture();
