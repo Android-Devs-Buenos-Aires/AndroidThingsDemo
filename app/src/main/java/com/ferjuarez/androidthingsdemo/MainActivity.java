@@ -46,19 +46,27 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private final String PIN_ECHO = "BCM25";
 
     private Gpio mLedGpio;
+    private Handler mLedHandler;
+    private boolean mLedActive;
     private Button mButton;
     private PeripheralManagerService mPeriphericalService;
     private SensorManager mSensorManager;
     private Hcsr04UltrasonicDriver mSensorDriver;
 
     private CameraHandler mCamera;
-    private Handler mCameraHandler;
+    private Handler mCameraRestartHandler;
+    private Runnable mCameraRestartRunnable;
+
     private HandlerThread mCameraThread;
+    private Handler mCameraHandler;
     private boolean isCameraEnabled = true;
 
     private CloudVisionService mCloudVisionService;
     private FirebaseDatabase mDatabase;
 
+    private static final int RESTART_CAMERA_DELAY = 20000;
+    private static final int MAX_RANGE = 50;
+    private static final int MIN_RANGE = 40;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -121,8 +129,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         });
     }
 
-
-
     private void setupCamera(){
         mCameraThread = new HandlerThread("CameraBackground");
         mCameraThread.start();
@@ -140,10 +146,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
     private void setupIndicatorLed(){
+        mLedHandler = new Handler();
         try {
             mLedGpio = mPeriphericalService.openGpio(PIN_LED);
             mLedGpio.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
+            mLedGpio.setActiveType(Gpio.ACTIVE_HIGH);
+            setLedState(true);
         } catch (IOException e){
+            Log.e("","");
         }
     }
 
@@ -184,17 +194,49 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private void reenableCamera(){
         // delay to prevent firebase and cloud vision flooding
-
         isCameraEnabled = true;
+
+        mCameraRestartHandler = new Handler();
+        mCameraRestartRunnable = new Runnable() {
+            @Override
+            public void run() {
+                isCameraEnabled = true;
+            }
+        };
+        mCameraRestartHandler.postDelayed(mCameraRestartRunnable, RESTART_CAMERA_DELAY);
+        setLedState(true);
     }
 
     private void setLedState(boolean isOn) {
         try {
             mLedGpio.setValue(isOn);
+            mLedActive = isOn;
         } catch (IOException e) {
 
         }
     }
+
+    private void setLedBlinking(boolean value) {
+        if (value) {
+            blinkLedRepeatCommand.run();
+        } else {
+            setLedState(false);
+            mLedHandler.removeCallbacks(blinkLedRepeatCommand);
+        }
+    }
+
+    private final Runnable blinkLedRepeatCommand = new Runnable() {
+        @Override
+        public void run() {
+            toggleLed();
+            mLedHandler.postDelayed(blinkLedRepeatCommand, 500);
+        }
+    };
+
+    private void toggleLed() {
+        setLedState(!mLedActive);
+    }
+
 
     private void closeLedIndicator(){
         if (mLedGpio != null) {
@@ -244,7 +286,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 reenableCamera();
             }
         });
-        //isCameraEnabled = true;
     }
 
 
@@ -262,6 +303,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     imageBuf.get(imageBytes);
                     image.close();
 
+                    setLedBlinking(false);
+                    setLedState(false);
                     onPictureTaken(imageBytes);
                 }
             };
@@ -272,8 +315,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         public void onButtonEvent(Button button, boolean pressed) {
             if (pressed) {
-                //closeProximitySensor();
-                //setupProximitySensor();
+                closeProximitySensor();
+                setupProximitySensor();
                 Log.e(TAG,"Button Pressed!");
             }
         }
@@ -306,11 +349,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onSensorChanged(SensorEvent sensorEvent) {
-
         float value = sensorEvent.values[0];
         Log.e(TAG,"Sensor Values: " + String.valueOf(value));
-        if(value > 40 && value < 50 && isCameraEnabled){
-            setLedState(true);
+        if(value > MIN_RANGE && value < MAX_RANGE && isCameraEnabled){
+            setLedBlinking(true);
             mCamera.takePicture();
             disableCameraTemporarily();
         }
