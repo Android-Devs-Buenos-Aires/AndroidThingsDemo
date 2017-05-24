@@ -153,6 +153,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             mLedGpio.setActiveType(Gpio.ACTIVE_HIGH);
             setLedState(true);
         } catch (IOException e){
+
             Log.e("","");
         }
     }
