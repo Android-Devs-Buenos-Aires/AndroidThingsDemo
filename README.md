@@ -1,6 +1,6 @@
 # Android Devs Buenos Aires
 
-Repositorio relacionado al evento **Primeros pasos con Android Things** realizado el 15 de Agosto de 2019.
+Repositorio relacionado al evento **Primeros pasos con Android Things** realizado el 23 de Mayo de 2017.
 
  - _Evento:_ [Primeros pasos con Android Things](https://www.meetup.com/es-ES/Android-Devs-Buenos-Aires/events/239573452/)
  - _Presentación:_ [Slides](https://goo.gl/ASdq77)
